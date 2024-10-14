@@ -1,32 +1,19 @@
 import React, { useState } from 'react';
+import AuthService from '../services/authService'; // Ensure the path is correct
 
 const CreateAccount = () => {
-  const [name, setName] = useState('');
+  const [clientname, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:5001/api/client/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          clientname: name, 
-          email, 
-          password 
-        }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        console.log('Account created successfully:', data.message);
-      } else {
-        console.error('Error:', data.message);
-      }
+      const { token, client } = await AuthService.register(clientname, email, password);
+      console.log('Account created successfully:', token, client);
+      // Optionally redirect the user or do other follow-up actions
     } catch (error) {
-      console.error('Error connecting to the server:', error);
+      console.error('Error:', error.message);
     }
   };
 
@@ -41,7 +28,7 @@ const CreateAccount = () => {
               type="text" 
               className="form-control" 
               placeholder="Enter name" 
-              value={name} 
+              value={clientname} 
               onChange={(e) => setName(e.target.value)} 
               required
             />
