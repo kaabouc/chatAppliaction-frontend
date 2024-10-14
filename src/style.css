@@ -1,0 +1,15 @@
+.card {
+    border-radius: 15px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  }
+  
+  h2 {
+    font-size: 1.8rem;
+    color: #333;
+  }
+  
+  form input {
+    padding: 0.75rem;
+    font-size: 1rem;
+  }
+  
