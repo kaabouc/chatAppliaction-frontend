@@ -19,12 +19,18 @@ const Chat = () => {
     });
   }, []);
 
+  const sender = localStorage.getItem('auth_client'); // Or however you store/retrieve the sender info
+    const message = {
+      content: newMessage, // Assuming this is the message content from your input
+      sender: sender, // Add sender information here
+    };
+
   // Fetch users (clients)
   useEffect(() => {
     if (client) {
       fetch('http://localhost:5001/api/messages/clients', {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       })
         .then((res) => res.json())
@@ -36,10 +42,11 @@ const Chat = () => {
   // Fetch messages and set up socket listener
   useEffect(() => {
     if (selectedUser && client) {
+      console.log(selectedUser)
       // Fetch messages between the client and the selected user
       fetch(`http://localhost:5001/api/messages/${selectedUser._id}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       })
         .then((res) => res.json())
@@ -77,37 +84,51 @@ const Chat = () => {
       alert('Please select a user to chat with.');
       return;
     }
-
+  
     if (!newMessage.trim()) {
       alert('Please enter a message.');
       return;
     }
-
+    console.log("Sender (client ID):", client.clientId); 
+    console.log("Receiver (selectedUser ID):", selectedUser._id);
+  
     const message = {
-      receiverId: selectedUser._id,
-      content: newMessage,
+      sender: client.clientId, // Sender's ID (authenticated client)
+      receiver: selectedUser._id, // Ensure field matches backend expectations
+      content: newMessage, // The message content
     };
-
-    // Send message to server
+  
+    // Send message to the server
     fetch('http://localhost:5001/api/messages/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+        Authorization: `Bearer ${localStorage.getItem('token')}`, // Add the token
       },
-      body: JSON.stringify(message),
+      body: JSON.stringify(message), // Send message object with sender and receiver
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          return response.json().then((data) => {
+            throw new Error(data.error || 'Failed to send message');
+          });
+        }
+        return response.json();
+      })
       .then((data) => {
         console.log('Message sent:', data);
         socket.emit('chat message', data); // Emit the message via Socket.IO
-        setMessages((prevMessages) => [...prevMessages, data]); // Update messages list
+        setMessages((prevMessages) => [...prevMessages, data]); // Update the message list
         setNewMessage(''); // Clear input field
         scrollToBottom();
       })
-      .catch((error) => console.error('Error:', error));
+      .catch((error) => {
+        console.error('Error:', error);
+        alert('Error sending message: ' + error.message); // Display an error message
+      });
   };
-
+  
+  
   // Render the component
   return (
     <div className="container-fluid">
