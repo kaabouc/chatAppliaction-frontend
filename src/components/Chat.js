@@ -22,9 +22,9 @@ const Chat = () => {
   // Fetch users (clients)
   useEffect(() => {
     if (client) {
-      fetch('http://localhost:5001/api/messages/clients', {
+      fetch('http://localhost:5001/api/client/auth/users', {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       })
         .then((res) => res.json())
@@ -39,7 +39,7 @@ const Chat = () => {
       // Fetch messages between the client and the selected user
       fetch(`http://localhost:5001/api/messages/${selectedUser._id}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       })
         .then((res) => res.json())
@@ -84,28 +84,38 @@ const Chat = () => {
     }
 
     const message = {
-      receiverId: selectedUser._id,
-      content: newMessage,
+      sender: client.clientId, // Sender's ID (authenticated client)
+      receiver: selectedUser._id, // Ensure field matches backend expectations
+      content: newMessage, // The message content
     };
 
-    // Send message to server
+    // Send message to the server
     fetch('http://localhost:5001/api/messages/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+        Authorization: `Bearer ${localStorage.getItem('token')}`, // Add the token
       },
-      body: JSON.stringify(message),
+      body: JSON.stringify(message), // Send message object with sender and receiver
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          return response.json().then((data) => {
+            throw new Error(data.error || 'Failed to send message');
+          });
+        }
+        return response.json();
+      })
       .then((data) => {
-        console.log('Message sent:', data);
         socket.emit('chat message', data); // Emit the message via Socket.IO
-        setMessages((prevMessages) => [...prevMessages, data]); // Update messages list
+        setMessages((prevMessages) => [...prevMessages, data]); // Update the message list
         setNewMessage(''); // Clear input field
         scrollToBottom();
       })
-      .catch((error) => console.error('Error:', error));
+      .catch((error) => {
+        console.error('Error:', error);
+        alert('Error sending message: ' + error.message); // Display an error message
+      });
   };
 
   // Render the component
@@ -151,17 +161,18 @@ const Chat = () => {
               messages.map((msg, index) => (
                 <div
                   key={index}
-                  className={`mb-2 ${
-                    msg.sender === client.clientId ? 'text-right' : 'text-left'
+                  className={`d-flex mb-3 ${
+                    msg.sender === client.clientId ? 'justify-content-end' : 'justify-content-start'
                   }`}
                 >
-                  <span
-                    className={`badge badge-${
-                      msg.sender === client.clientId ? 'primary' : 'secondary'
-                    } p-2`}
+                  <div
+                    className={`p-3 rounded ${
+                      msg.sender === client.clientId ? 'bg-primary text-white' : 'bg-light text-dark'
+                    }`}
+                    style={{ maxWidth: '75%' }}
                   >
                     {msg.content}
-                  </span>
+                  </div>
                 </div>
               ))
             ) : (
