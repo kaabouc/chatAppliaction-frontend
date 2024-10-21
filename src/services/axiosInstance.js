@@ -3,7 +3,7 @@ import BASE_URL from '../config'; // Ensure this import matches your actual conf
 import AuthService from './authService'; // Ensure correct path
 
 const axiosInstance = axios.create({
-  baseURL: BASE_URL,
+  baseURL: 'http://localhost:5001',
   headers: {
     'Content-Type': 'application/json',
   },

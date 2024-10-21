@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Button,
+  // Button,
   TextField,
-  Checkbox,
-  FormControlLabel,
-  FormGroup,
+  // Checkbox,
+  // FormControlLabel,
+  // FormGroup,
   Typography,
   Grid,
   Paper,
@@ -16,8 +16,12 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
+import { IconButton, Button } from '@mui/material';
+import { Add as AddIcon, Remove as RemoveIcon } from '@mui/icons-material';
+
 import { useAuth } from '../context/AuthContext';
 import axiosInstance from '../services/axiosInstance';
+import BASE_URL from '../config';
 
 const Profile = () => {
   const { client } = useAuth();
@@ -25,12 +29,9 @@ const Profile = () => {
     nationalCardCode: '',
     phoneNumber: '',
     birthday: '',
-    additionalDetails: {
-      newsletter: false,
-      offers: false,
-      updates: false,
-    },
+    additionalDetails: [],
   });
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const [snackbar, setSnackbar] = useState({
@@ -44,7 +45,7 @@ const Profile = () => {
     const fetchProfile = async () => {
       try {
         const response = await axiosInstance.get(
-          `/api/client/profile/${client.clientId}`
+          `${BASE_URL}/api/client/profile/${client.clientId}`
         );
         setProfileData((prevData) => ({
           ...prevData,
@@ -52,35 +53,60 @@ const Profile = () => {
           birthday: response.data.birthday
             ? new Date(response.data.birthday).toISOString().split('T')[0]
             : '',
+          additionalDetails: response.data.additionalDetails || [],
         }));
       } catch (error) {
         console.error('Error fetching profile data:', error);
       }
     };
-
+  
     if (client) {
       fetchProfile();
     }
   }, [client]);
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setProfileData((prevData) => ({
-      ...prevData,
-      [name]: value,
-    }));
-  };
+    const newValue = value === '' ? null : value;
 
-  const handleCheckboxChange = (e) => {
-    const { name, checked } = e.target;
-    setProfileData((prevData) => ({
-      ...prevData,
-      additionalDetails: {
-        ...prevData.additionalDetails,
-        [name]: checked,
-      },
-    }));
+    if (name.startsWith('additionalDetails')) {
+      const index = parseInt(e.target.getAttribute('data-index'), 10);
+      const field = e.target.getAttribute('data-field');
+  
+      setProfileData((prevData) => {
+        const newDetails = [...prevData.additionalDetails];
+        if (newDetails[index]) {
+          newDetails[index][field] = value;
+        } else {
+          newDetails[index] = { [field]: value };
+        }
+        return { ...prevData, additionalDetails: newDetails };
+      });
+    } else {
+      setProfileData((prevData) => ({
+        ...prevData,
+        [name]: value,
+      }));
+    }
   };
+  
+  
+
+
+const handleAddDetail = () => {
+  setProfileData((prevData) => ({
+    ...prevData,
+    additionalDetails: [...prevData.additionalDetails, { name: '', value: '' }],
+  }));
+};
+
+const handleRemoveDetail = (index) => {
+  setProfileData((prevData) => {
+    const newDetails = [...prevData.additionalDetails];
+    newDetails.splice(index, 1);
+    return { ...prevData, additionalDetails: newDetails };
+  });
+};
+
 
   const handleModalOpen = () => {
     setIsModalOpen(true);
@@ -93,20 +119,22 @@ const Profile = () => {
   const handleSnackbarClose = () => {
     setSnackbar((prev) => ({ ...prev, open: false }));
   };
-
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axiosInstance.post(
-        `/api/client/profile/${client.clientId}`,
-        profileData
-      );
+      
+const response = await axiosInstance.post(
+  `${BASE_URL}/api/client/profile/${client.clientId}`,
+  profileData
+);
+      
       setProfileData((prevData) => ({
         ...prevData,
         ...response.data,
         birthday: response.data.birthday
           ? new Date(response.data.birthday).toISOString().split('T')[0]
           : '',
+        additionalDetails: response.data.additionalDetails || [],
       }));
       setIsModalOpen(false);
       setSnackbar({
@@ -124,6 +152,7 @@ const Profile = () => {
       });
     }
   };
+  
 
   return (
     <Box sx={{ p: 3 }}>
@@ -150,15 +179,20 @@ const Profile = () => {
               Birthday: {profileData.birthday || 'N/A'}
             </Typography>
           </Grid>
-          {/* Additional Details */}
-          <Grid item xs={12}>
-            <Typography variant="h6">Additional Details</Typography>
-            <Typography variant="body1">
-              {profileData.additionalDetails.newsletter && 'Subscribed to Newsletter. '}
-              {profileData.additionalDetails.offers && 'Receives Special Offers. '}
-              {profileData.additionalDetails.updates && 'Gets Product Updates. '}
-            </Typography>
-          </Grid>
+         {/* Additional Details */}
+<Grid item xs={12}>
+  <Typography variant="h6">Additional Details</Typography>
+  {profileData.additionalDetails && profileData.additionalDetails.length > 0 ? (
+    profileData.additionalDetails.map((detail, index) => (
+      <Typography variant="body1" key={index}>
+        <strong>{detail.name}:</strong> {detail.value}
+      </Typography>
+    ))
+  ) : (
+    <Typography variant="body1">No additional details.</Typography>
+  )}
+</Grid>
+
           {/* Action Button */}
           <Grid item xs={12} sx={{ textAlign: 'center' }}>
             <Button variant="contained" onClick={handleModalOpen}>
@@ -210,40 +244,48 @@ const Profile = () => {
               </Grid>
               {/* Additional Details */}
               <Grid item xs={12}>
-                <Typography variant="h6">Additional Details</Typography>
-                <FormGroup>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={profileData.additionalDetails.newsletter}
-                        onChange={handleCheckboxChange}
-                        name="newsletter"
-                      />
-                    }
-                    label="Subscribe to Newsletter"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={profileData.additionalDetails.offers}
-                        onChange={handleCheckboxChange}
-                        name="offers"
-                      />
-                    }
-                    label="Receive Special Offers"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={profileData.additionalDetails.updates}
-                        onChange={handleCheckboxChange}
-                        name="updates"
-                      />
-                    }
-                    label="Get Product Updates"
-                  />
-                </FormGroup>
-              </Grid>
+  <Typography variant="h6">Additional Details</Typography>
+  {profileData.additionalDetails.map((detail, index) => (
+    <Grid container spacing={1} key={index} alignItems="center">
+      <Grid item xs={5}>
+      <TextField
+  label="Name"
+  name={`additionalDetails-name-${index}`}
+  value={detail.name}
+  onChange={handleInputChange}
+  fullWidth
+  inputProps={{
+    'data-index': index,
+    'data-field': 'name',
+  }}
+/>
+
+      </Grid>
+      <Grid item xs={5}>
+      <TextField
+  label="Value"
+  name={`additionalDetails-value-${index}`}
+  value={detail.value}
+  onChange={handleInputChange}
+  fullWidth
+  inputProps={{
+    'data-index': index,
+    'data-field': 'value',
+  }}
+/>
+
+      </Grid>
+      <Grid item xs={2}>
+        <IconButton onClick={() => handleRemoveDetail(index)}>
+          <RemoveIcon />
+        </IconButton>
+      </Grid>
+    </Grid>
+  ))}
+  <Button variant="outlined" onClick={handleAddDetail} startIcon={<AddIcon />}>
+    Add Detail
+  </Button>
+</Grid>
             </Grid>
           </Box>
         </DialogContent>
