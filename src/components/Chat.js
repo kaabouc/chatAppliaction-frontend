@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'; 
-import { faImage, faFilePdf } from '@fortawesome/free-solid-svg-icons'; 
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faImage, faFilePdf } from '@fortawesome/free-solid-svg-icons';
 
 const Chat = () => {
   const { client } = useAuth();
@@ -10,11 +10,10 @@ const Chat = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [imageFile, setImageFile] = useState(null);  // Separate state for image
-  const [pdfFile, setPdfFile] = useState(null);      // Separate state for PDF
+  const [imageFile, setImageFile] = useState(null);
+  const [pdfFile, setPdfFile] = useState(null);
   const messagesEndRef = useRef(null);
-  const socket = useMemo(() => io('http://localhost:5001', { auth: { token: localStorage.getItem('jwt_token') } }), []);
-  
+  const socket = useMemo(() => io('http://localhost:3000', { auth: { token: localStorage.getItem('jwt_token') } }), []);
 
   useEffect(() => {
     if (client) {
@@ -22,113 +21,112 @@ const Chat = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       })
         .then((res) => res.json())
-        .then((data) => setUsers(data))
+        .then((data) => {
+          // Filter out the logged-in user from the users list
+          const filteredUsers = data.filter(user => user._id !== client.clientId);
+          setUsers(filteredUsers);
+        })
         .catch((err) => console.error('Error fetching clients:', err));
     }
   }, [client]);
 
-
-
   useEffect(() => {
     if (selectedUser && client) {
-      // Fetch initial messages from the server for the selected user
-      fetch(`http://localhost:5001/api/messages/${selectedUser._id}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
-        },
+      fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser._id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
       })
         .then((res) => res.json())
         .then((data) => {
-          console.log('Fetched messages:', data);
-          // Filter messages between the current client and the selected user
-          const filteredMessages = data.filter(
-            (message) =>
-              (message.sender === client.clientId && message.receiver === selectedUser._id) ||
-              (message.sender === selectedUser._id && message.receiver === client.clientId)
-          );
-          setMessages(filteredMessages);
-          scrollToBottom(); // Scroll to the bottom when messages are loaded
+          setMessages(data);
+          scrollToBottom();
         })
         .catch((err) => console.error('Error fetching messages:', err));
-  
-      // Handle real-time messages via socket
+
       socket.on('chat message', (msg) => {
-        console.log('Socket received message:', msg);
         if (
           (msg.sender === selectedUser._id || msg.receiver === selectedUser._id) &&
           (msg.sender === client.clientId || msg.receiver === client.clientId)
         ) {
           setMessages((prevMessages) => [...prevMessages, msg]);
-          scrollToBottom(); // Scroll when new message is received
+          scrollToBottom();
         }
       });
-  
-      return () => {
-        socket.off('chat message'); // Clean up listener when component unmounts or user changes
-      };
     }
+
+    return () => {
+      socket.off('chat message');
+    };
   }, [selectedUser, client, socket]);
-  
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  useEffect(() => {
+    scrollToBottom(); // Scroll to bottom whenever messages change
+  }, [messages]);
+  
   const sendMessage = () => {
-    if (!selectedUser || !client) {
-      alert('Please select a user to chat with.');
-      return;
-    }
+  if (!selectedUser || !client) {
+    alert('Please select a user to chat with.');
+    return;
+  }
 
-    if (!newMessage.trim() && !imageFile && !pdfFile) {
-      alert('Please enter a message or select a file.');
-      return;
-    }
+  // Ensure that either a message, an image, or a PDF is present before sending
+  if (!newMessage.trim() && !imageFile && !pdfFile) {
+    alert('Please enter a message or select a file.');
+    return;
+  }
 
-    const message = {
-      sender: client.clientId,
-      receiver: selectedUser._id,
-      content: newMessage.trim(),
-    };
-
-    const formData = new FormData();
-    formData.append('message', JSON.stringify(message));
-    if (imageFile) {
-      formData.append('file', imageFile);
-    } else if (pdfFile) {
-      formData.append('file', pdfFile);
-    }
-
-    const token = localStorage.getItem('jwt_token');
-    fetch('http://localhost:5001/api/messages/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`, 
-      },
-      body: formData,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((data) => {
-            throw new Error(data.error || 'Failed to send message');
-          });
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log('Message sent:', data);
-        socket.emit('chat message', data);
-        setMessages((prevMessages) => [...prevMessages, data]);
-        setNewMessage('');
-        setImageFile(null); // Clear the image file after sending
-        setPdfFile(null);   // Clear the PDF file after sending
-        scrollToBottom();
-      })
-      .catch((error) => {
-        console.error('Error:', error);
-        alert('Error sending message: ' + error.message);
-      });
+  // Construct the message object without 'content' if it's empty
+  const message = {
+    sender: client.clientId,
+    receiver: selectedUser._id,
   };
+
+  if (newMessage.trim()) {
+    message.content = newMessage.trim();
+  }
+
+  const formData = new FormData();
+  formData.append('message', JSON.stringify(message));
+
+  if (imageFile) {
+    formData.append('file', imageFile);
+  } else if (pdfFile) {
+    formData.append('file', pdfFile);
+  }
+
+  const token = localStorage.getItem('jwt_token');
+  fetch('http://localhost:5001/api/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+    .then((response) => {
+      if (!response.ok) {
+        return response.json().then((data) => {
+          throw new Error(data.error || 'Failed to send message');
+        });
+      }
+      return response.json();
+    })
+    .then((data) => {
+      console.log('Message sent:', data);
+      socket.emit('chat message', data);
+      setMessages((prevMessages) => [...prevMessages, data]);
+      setNewMessage(''); // Clear the message input
+      setImageFile(null); // Clear the image input
+      setPdfFile(null); // Clear the PDF input
+      scrollToBottom();
+    })
+    .catch((error) => {
+      console.error('Error:', error);
+      alert('Error sending message: ' + error.message);
+    });
+};
 
   const handleImageUpload = (e) => {
     setImageFile(e.target.files[0]);
@@ -139,6 +137,17 @@ const Chat = () => {
     setPdfFile(e.target.files[0]);
     setImageFile(null); // Clear image if PDF is selected
   };
+
+  // Inline styles for message bubbles
+  const messageStyle = {
+    color: 'black',
+    padding: '10px',
+    borderRadius: '5px',
+    maxWidth: '75%',
+    wordWrap: 'break-word',
+  };
+
+ 
 
   return (
     <div className="container-fluid">
@@ -160,45 +169,72 @@ const Chat = () => {
         </div>
 
         <div className="col-md-9 d-flex flex-column">
-          <div className="border-bottom p-3">
-            <h5 className="mb-0">
-              {selectedUser ? `Chat with ${selectedUser.clientname}` : 'Select a user to start chatting'}
-            </h5>
-          </div>
+  <div className="border-bottom p-3">
+    <h5 className="mb-0">
+      {selectedUser ? `Chat with ${selectedUser.clientname}` : 'Select a user to start chatting'}
+    </h5>
+  </div>
 
-          <div className="flex-grow-1 overflow-auto p-3" style={{ backgroundColor: '#f8f9fa' }}>
-  {selectedUser ? (
-    messages.map((msg, index) => (
-      <div key={index} className={`mb-2 ${msg.sender === client.clientId ? 'text-right' : 'text-left'}`}>
-        {/* Text Message */}
-        {msg.content && (
-          <span className={`badge badge-${msg.sender === client.clientId ? 'primary' : 'secondary'} p-2`}>
-            {msg.content}
-          </span>
-        )}
+  {/* Zone des messages défilante */}
+  <div className="flex-grow-1 overflow-auto p-3" style={{ backgroundColor: '#f8f9fa', maxHeight: '600px', overflowY: 'scroll' }}>
+    {selectedUser ? (
+      messages.map((msg, index) => (
+        <div
+          key={index}
+          className={`mb-2 d-flex ${msg.sender === client.clientId ? 'justify-content-end' : 'justify-content-start'}`}
+        >
+          <div
+            className={`message-bubble ${msg.sender === client.clientId ? 'sent' : 'received'}`}
+            style={{
+              backgroundColor: msg.sender === client.clientId ? '#007bff' : '#e0e0e0',
+              color: msg.sender === client.clientId ? 'white' : 'black',
+              padding: '10px',
+              borderRadius: '10px',
+              maxWidth: '60%',
+              textAlign: msg.sender === client.clientId ? 'right' : 'left',
+              position: 'relative',
+            }}
+          >
+            {/* Affichage du texte */}
+            <span style={{ display: 'block', marginBottom: '5px' }}>
+              {msg.content || ''}
+            </span>
 
-        {/* Image Message */}
-        {msg.image && (
-          <div>
-            <img src={`http://localhost:5001/${msg.image}`} alt="Sent Image" style={{ maxWidth: '200px' }} />
-          </div>
-        )}
+            {/* Image */}
+            {msg.image && (
+              <img
+                src={`http://localhost:5001/${msg.image}`}
+                alt="Sent"
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '200px',
+                  marginTop: '5px',
+                  borderRadius: '10px',
+                  display: 'block',
+                }}
+              />
+            )}
 
-        {/* PDF File */}
-        {msg.file && (
-          <div>
-            <a href={`http://localhost:5001/${msg.file}`} target="_blank" rel="noopener noreferrer">
-              Download PDF
-            </a>
+            {/* Fichier PDF */}
+            {msg.file && !msg.image && (
+              <a
+                href={`http://localhost:5001/${msg.file}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: msg.sender === client.clientId ? 'white' : 'black' }}
+              >
+                <FontAwesomeIcon icon={faFilePdf} size="2x" />
+              </a>
+            )}
           </div>
-        )}
-      </div>
-    ))
-  ) : (
-    <p>Select a user to view messages</p>
-  )}
-  <div ref={messagesEndRef} />
-</div>
+        </div>
+      ))
+    ) : (
+      <p>Select a user to view messages</p>
+    )}
+    <div ref={messagesEndRef} />
+  </div>
+
 
 
           {selectedUser && (
