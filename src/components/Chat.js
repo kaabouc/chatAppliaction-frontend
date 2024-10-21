@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'; 
-import { faImage, faFilePdf } from '@fortawesome/free-solid-svg-icons'; 
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faImage, faFilePdf } from '@fortawesome/free-solid-svg-icons';
 
 const Chat = () => {
   const { client } = useAuth();
@@ -10,10 +10,10 @@ const Chat = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-  const [imageFile, setImageFile] = useState(null);  // Separate state for image
-  const [pdfFile, setPdfFile] = useState(null);      // Separate state for PDF
+  const [imageFile, setImageFile] = useState(null);
+  const [pdfFile, setPdfFile] = useState(null);
   const messagesEndRef = useRef(null);
-  const socket = useMemo(() => io('http://localhost:5001', { auth: { token: localStorage.getItem('jwt_token') } }), []);
+  const socket = useMemo(() => io('http://localhost:3000', { auth: { token: localStorage.getItem('jwt_token') } }), []);
 
   useEffect(() => {
     if (client) {
@@ -28,8 +28,8 @@ const Chat = () => {
 
   useEffect(() => {
     if (selectedUser && client) {
-      fetch(`http://localhost:5001/api/messages/${selectedUser._id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser._id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
       })
         .then((res) => res.json())
         .then((data) => {
@@ -87,7 +87,7 @@ const Chat = () => {
     fetch('http://localhost:5001/api/messages/send', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`, 
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
     })
@@ -104,8 +104,8 @@ const Chat = () => {
         socket.emit('chat message', data);
         setMessages((prevMessages) => [...prevMessages, data]);
         setNewMessage('');
-        setImageFile(null); // Clear the image file after sending
-        setPdfFile(null);   // Clear the PDF file after sending
+        setImageFile(null);
+        setPdfFile(null);
         scrollToBottom();
       })
       .catch((error) => {
@@ -123,6 +123,17 @@ const Chat = () => {
     setPdfFile(e.target.files[0]);
     setImageFile(null); // Clear image if PDF is selected
   };
+
+  // Inline styles for message bubbles
+  const messageStyle = {
+    color: 'black',
+    padding: '10px',
+    borderRadius: '5px',
+    maxWidth: '75%',
+    wordWrap: 'break-word',
+  };
+
+ 
 
   return (
     <div className="container-fluid">
@@ -153,15 +164,35 @@ const Chat = () => {
           <div className="flex-grow-1 overflow-auto p-3" style={{ backgroundColor: '#f8f9fa' }}>
             {selectedUser ? (
               messages.map((msg, index) => (
-                <div key={index} className={`mb-2 ${msg.sender === client.clientId ? 'text-right' : 'text-left'}`}>
-                  <span className={`badge badge-${msg.sender === client.clientId ? 'primary' : 'secondary'} p-2`}>
-                    {msg.content}
-                  </span>
-                  {msg.file && (
-                    <div>
-                      <a href={msg.file} target="_blank" rel="noopener noreferrer">View File</a>
-                    </div>
-                  )}
+                <div key={index} className={`mb-2 d-flex ${msg.sender === client.clientId ? 'justify-content-end' : 'justify-content-start'}`}>
+                  <div>
+                    {/* Message text */}
+                    <span style={messageStyle}>
+                      {msg.content || ''}
+                    </span>
+
+                    {/* Display the image below the text if it exists */}
+                    {msg.image && (
+                      <img
+                        src={`http://localhost:5001/${msg.image}`}
+                        alt="Sent"
+                        style={{ maxWidth: '200px', maxHeight: '200px', marginTop: '5px' }} // Display image below text
+                      />
+                    )}
+
+                    {/* Display the file link below the image or text */}
+                    {msg.file && !msg.image && (
+                      <a
+                        href={`http://localhost:5001/${msg.file}`}
+                    
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <FontAwesomeIcon icon={faFilePdf} size="2x"/> 
+                     
+                      </a>
+                    )}
+                  </div>
                 </div>
               ))
             ) : (
