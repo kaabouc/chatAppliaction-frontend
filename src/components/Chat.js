@@ -25,6 +25,8 @@ const Chat = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [searchCount, setSearchCount] = useState(0);
+  const [query, setQuery] = useState('');   // State for search input
+    const [filteredUsers, setFilteredUsers] = useState([]); // State for filtered users
   const messageRefs = useRef({});
   const socket = useMemo(() => io('http://localhost:3000', { 
     auth: { token: localStorage.getItem('jwt_token') } 
@@ -137,6 +139,33 @@ const Chat = () => {
     fetchMessages();
   };
 
+   // Fetch all users on component mount
+   useEffect(() => {
+    const fetchUsers = async () => {
+        try {
+            const response = await axios.get('/api/users'); // Adjust to your users route
+            setUsers(response.data);
+            setFilteredUsers(response.data); // Initially set filtered users to all users
+        } catch (error) {
+            console.error("Error fetching users:", error);
+        }
+    };
+
+    fetchUsers();
+}, []);
+
+// Handle search input change
+const handleSearche = (e) => {
+    const searchQuery = e.target.value.toLowerCase();
+    setQuery(searchQuery);
+
+    // Filter users based on search query
+    const filtered = users.filter(user =>
+        user.clientname.toLowerCase().includes(searchQuery) ||
+        user.email.toLowerCase().includes(searchQuery)
+    );
+    setFilteredUsers(filtered);
+};
   // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -220,16 +249,31 @@ const Chat = () => {
     }
   };
 
-  // Render message component
-  const renderMessage = (msg, index) => (
+ // Update the renderMessage function to highlight searched words
+const renderMessage = (msg, index) => {
+  // Function to highlight the search term
+  const highlightText = (text) => {
+    if (!searchQuery) return text;
+
+    const parts = text.split(new RegExp(`(${searchQuery})`, 'gi'));
+    return parts.map((part, i) => 
+      part.toLowerCase() === searchQuery.toLowerCase() ? (
+        <span key={i} style={{ backgroundColor: '#ffc107', fontWeight: 'bold' }}>
+          {part}
+        </span>
+      ) : (
+        part
+      )
+    );
+  };
+
+  return (
     <div
       key={index}
       className={`mb-2 d-flex ${msg.sender === client?.clientId ? 'justify-content-end' : 'justify-content-start'}`}
     >
       <div
-        className={`message-bubble ${msg.sender === client?.clientId ? 'sent' : 'received'} ${
-          isSearching && searchResults.includes(msg) ? 'search-result' : ''
-        }`}
+        className={`message-bubble ${msg.sender === client?.clientId ? 'sent' : 'received'}`}
         style={{
           backgroundColor: msg.sender === client?.clientId ? '#007bff' : '#e0e0e0',
           color: msg.sender === client?.clientId ? 'white' : 'black',
@@ -237,12 +281,11 @@ const Chat = () => {
           borderRadius: '10px',
           maxWidth: '60%',
           position: 'relative',
-          border: isSearching && searchResults[currentSearchIndex]?._id === msg._id 
-            ? '2px solid #ffc107' 
-            : 'none',
         }}
       >
-        <span style={{ display: 'block', marginBottom: '5px' }}>{msg.content || ''}</span>
+        <span style={{ display: 'block', marginBottom: '5px' }}>
+          {highlightText(msg.content || '')}
+        </span>
 
         {msg.image && (
           <img
@@ -271,25 +314,34 @@ const Chat = () => {
       </div>
     </div>
   );
+};
+
 
   return (
     <div className="container-fluid">
       <div className="row vh-100">
         {/* Users List */}
         <div className="col-md-3 border-right bg-light p-3">
-          <h5 className="border-bottom pb-2">Users</h5>
-          <ul className="list-group">
-            {users.map((user) => (
-              <li
-                key={user._id}
-                className={`list-group-item ${selectedUser?._id === user._id ? 'active' : ''}`}
-                onClick={() => setSelectedUser(user)}
-                style={{ cursor: 'pointer' }}
-              >
-                {user.clientname}
-              </li>
-            ))}
-          </ul>
+            <h5 className="border-bottom pb-2">Users</h5>
+            <input
+                type="text"
+                placeholder="Search users..."
+                value={query}
+                onChange={handleSearche}
+                className="form-control mb-3" // Bootstrap class for styling
+            />
+            <ul className="list-group">
+                {filteredUsers.map((user) => (
+                    <li
+                        key={user._id}
+                        className={`list-group-item ${selectedUser?._id === user._id ? 'active' : ''}`}
+                        onClick={() => setSelectedUser(user)}
+                        style={{ cursor: 'pointer' }}
+                    >
+                        {user.clientname}
+                    </li>
+                ))}
+            </ul>
         </div>
 
         {/* Chat Area */}
