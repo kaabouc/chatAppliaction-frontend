@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import axios from 'axios'; 
 import { 
   faImage, 
   faPaperPlane,
@@ -11,6 +12,8 @@ import {
   faArrowUp, 
   faArrowDown 
 } from '@fortawesome/free-solid-svg-icons';
+import BASE_URL from '../config';
+
 const Chat = () => {
   const { client } = useAuth();
   const [users, setUsers] = useState([]);
@@ -39,13 +42,30 @@ const Chat = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       })
         .then((res) => res.json())
-        .then((data) => {
+        .then(async (data) => {
           const filteredUsers = data.filter(user => user._id !== client.clientId);
-          setUsers(filteredUsers);
+          setUsers(filteredUsers)
+          const usersWithProfiles = await Promise.all(
+            filteredUsers.map(async (user) => {
+              const profileResponse = await fetch(`http://localhost:5001/api/client/profile/${user._id}`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+              });
+              const profileData = await profileResponse.json();
+
+              return {
+                ...user,
+                profilePicture: profileData.profileImage || '/profile.jpg',
+              };
+            })
+          );
+        
+          setUsers(usersWithProfiles);
         })
-        .catch((err) => console.error('Error fetching users:', err));
+        .catch((err) => console.error('Error fetching clients:', err));
     }
   }, [client]);
+
+  
 
   // Fetch messages for selected user
   const fetchMessages = () => {
@@ -331,17 +351,23 @@ const renderMessage = (msg, index) => {
                 className="form-control mb-3" // Bootstrap class for styling
             />
             <ul className="list-group">
-                {filteredUsers.map((user) => (
-                    <li
-                        key={user._id}
-                        className={`list-group-item ${selectedUser?._id === user._id ? 'active' : ''}`}
-                        onClick={() => setSelectedUser(user)}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        {user.clientname}
-                    </li>
-                ))}
-            </ul>
+            {filteredUsers.map((user) => (
+              <li
+                key={user._id}
+                className={`list-group-item d-flex align-items-center ${selectedUser && selectedUser._id === user._id ? 'active' : ''}`}
+                onClick={() => setSelectedUser(user)}
+                style={{ cursor: 'pointer' }}
+              >
+                <img
+                  src={`${BASE_URL}/uploads/${user.profilePicture}` || '/profile.jpg'}
+                  alt={`${user.clientname}'s profile`}
+                  className="rounded-circle"
+                  style={{ width: '50px', height: '50px', objectFit: 'cover', marginRight: '15px' }} // Add marginRight
+                />
+                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{user.clientname}</span> {/* Increase font size and add bold */}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Chat Area */}
