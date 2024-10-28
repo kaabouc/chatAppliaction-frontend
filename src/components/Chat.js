@@ -2,8 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faImage, faFilePdf } from '@fortawesome/free-solid-svg-icons';
-
+import { 
+  faImage, 
+  faPaperPlane,
+  faFilePdf, 
+  faSearch, 
+  faTimes, 
+  faArrowUp, 
+  faArrowDown 
+} from '@fortawesome/free-solid-svg-icons';
 const Chat = () => {
   const { client } = useAuth();
   const [users, setUsers] = useState([]);
@@ -12,9 +19,18 @@ const Chat = () => {
   const [newMessage, setNewMessage] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [pdfFile, setPdfFile] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const messagesEndRef = useRef(null);
-  const socket = useMemo(() => io('http://localhost:3000', { auth: { token: localStorage.getItem('jwt_token') } }), []);
+  const [searchResults, setSearchResults] = useState([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  const [searchCount, setSearchCount] = useState(0);
+  const messageRefs = useRef({});
+  const socket = useMemo(() => io('http://localhost:3000', { 
+    auth: { token: localStorage.getItem('jwt_token') } 
+  }), []);
 
+  // Fetch users when component mounts
   useEffect(() => {
     if (client) {
       fetch('http://localhost:5001/api/client/auth/users', {
@@ -25,10 +41,11 @@ const Chat = () => {
           const filteredUsers = data.filter(user => user._id !== client.clientId);
           setUsers(filteredUsers);
         })
-        .catch((err) => console.error('Error fetching clients:', err));
+        .catch((err) => console.error('Error fetching users:', err));
     }
   }, [client]);
 
+  // Fetch messages for selected user
   const fetchMessages = () => {
     if (selectedUser && client) {
       fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser._id}`, {
@@ -43,13 +60,14 @@ const Chat = () => {
     }
   };
 
+  // Handle real-time messages and fetch initial messages
   useEffect(() => {
-    fetchMessages(); // Fetch messages when a user is selected
+    fetchMessages();
 
     socket.on('chat message', (msg) => {
       if (
-        (msg.sender === selectedUser._id || msg.receiver === selectedUser._id) &&
-        (msg.sender === client.clientId || msg.receiver === client.clientId)
+        (msg.sender === selectedUser?._id || msg.receiver === selectedUser?._id) &&
+        (msg.sender === client?.clientId || msg.receiver === client?.clientId)
       ) {
         setMessages((prevMessages) => [...prevMessages, msg]);
         scrollToBottom();
@@ -61,15 +79,96 @@ const Chat = () => {
     };
   }, [selectedUser, client, socket]);
 
+  // Search functionality
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || !selectedUser || !client) return;
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/messages/search/${client.clientId}/${selectedUser._id}/${searchQuery}`,
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
+        }
+      );
+
+      const data = await response.json();
+      setSearchResults(data);
+      setSearchCount(data.length);
+      setCurrentSearchIndex(data.length > 0 ? 0 : -1);
+      
+      // Scroll to first result if exists
+      if (data.length > 0) {
+        scrollToMessage(0);
+      }
+    } catch (error) {
+      console.error('Error searching messages:', error);
+    }
+  };
+
+  const scrollToMessage = (index) => {
+    if (searchResults[index]) {
+      const messageId = searchResults[index]._id;
+      messageRefs.current[messageId]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+      setCurrentSearchIndex(index);
+    }
+  };
+
+  const goToPreviousResult = () => {
+    if (currentSearchIndex > 0) {
+      scrollToMessage(currentSearchIndex - 1);
+    }
+  };
+
+  const goToNextResult = () => {
+    if (currentSearchIndex < searchResults.length - 1) {
+      scrollToMessage(currentSearchIndex + 1);
+    }
+  };
+
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setIsSearching(false);
+    setSearchResults([]);
+    fetchMessages();
+  };
+
+  // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    scrollToBottom(); // Scroll to bottom whenever messages change
+    scrollToBottom();
   }, [messages]);
 
-  const sendMessage = () => {
+  // Handle file uploads
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      setImageFile(file);
+      setPdfFile(null);
+    } else {
+      alert('Please select a valid image file');
+    }
+  };
+
+  const handlePdfUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type === 'application/pdf') {
+      setPdfFile(file);
+      setImageFile(null);
+    } else {
+      alert('Please select a valid PDF file');
+    }
+  };
+
+  // Send message function
+  const sendMessage = async () => {
     if (!selectedUser || !client) {
       alert('Please select a user to chat with.');
       return;
@@ -88,62 +187,102 @@ const Chat = () => {
 
     const formData = new FormData();
     formData.append('message', JSON.stringify(message));
+    
     if (imageFile) {
       formData.append('file', imageFile);
     } else if (pdfFile) {
       formData.append('file', pdfFile);
     }
 
-    const token = localStorage.getItem('jwt_token');
-    fetch('http://localhost:5001/api/messages/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((data) => {
-            throw new Error(data.error || 'Failed to send message');
-          });
-        }
-        return response.json();
-      })
-      .then((data) => {
-        console.log('Message sent:', data);
-        socket.emit('chat message', data);
-        fetchMessages(); // Call fetchMessages to refresh messages
-        setNewMessage('');
-        setImageFile(null);
-        setPdfFile(null);
-      })
-      .catch((error) => {
-        console.error('Error:', error);
-        alert('Error sending message: ' + error.message);
+    try {
+      const response = await fetch('http://localhost:5001/api/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+        body: formData,
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+
+      const data = await response.json();
+      socket.emit('chat message', data);
+      fetchMessages();
+      setNewMessage('');
+      setImageFile(null);
+      setPdfFile(null);
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error sending message: ' + error.message);
+    }
   };
 
-  const handleImageUpload = (e) => {
-    setImageFile(e.target.files[0]);
-    setPdfFile(null); // Clear PDF if image is selected
-  };
+  // Render message component
+  const renderMessage = (msg, index) => (
+    <div
+      key={index}
+      className={`mb-2 d-flex ${msg.sender === client?.clientId ? 'justify-content-end' : 'justify-content-start'}`}
+    >
+      <div
+        className={`message-bubble ${msg.sender === client?.clientId ? 'sent' : 'received'} ${
+          isSearching && searchResults.includes(msg) ? 'search-result' : ''
+        }`}
+        style={{
+          backgroundColor: msg.sender === client?.clientId ? '#007bff' : '#e0e0e0',
+          color: msg.sender === client?.clientId ? 'white' : 'black',
+          padding: '10px',
+          borderRadius: '10px',
+          maxWidth: '60%',
+          position: 'relative',
+          border: isSearching && searchResults[currentSearchIndex]?._id === msg._id 
+            ? '2px solid #ffc107' 
+            : 'none',
+        }}
+      >
+        <span style={{ display: 'block', marginBottom: '5px' }}>{msg.content || ''}</span>
 
-  const handlePdfUpload = (e) => {
-    setPdfFile(e.target.files[0]);
-    setImageFile(null); // Clear image if PDF is selected
-  };
+        {msg.image && (
+          <img
+            src={`http://localhost:5001/${msg.image}`}
+            alt="Sent"
+            style={{
+              maxWidth: '200px',
+              maxHeight: '200px',
+              marginTop: '5px',
+              borderRadius: '10px',
+              display: 'block',
+            }}
+          />
+        )}
+
+        {msg.file && !msg.image && (
+          <a
+            href={`http://localhost:5001/${msg.file}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: msg.sender === client?.clientId ? 'white' : 'black' }}
+          >
+            <FontAwesomeIcon icon={faFilePdf} size="2x" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="container-fluid">
       <div className="row vh-100">
+        {/* Users List */}
         <div className="col-md-3 border-right bg-light p-3">
           <h5 className="border-bottom pb-2">Users</h5>
           <ul className="list-group">
             {users.map((user) => (
               <li
                 key={user._id}
-                className={`list-group-item ${selectedUser && selectedUser._id === user._id ? 'active' : ''}`}
+                className={`list-group-item ${selectedUser?._id === user._id ? 'active' : ''}`}
                 onClick={() => setSelectedUser(user)}
                 style={{ cursor: 'pointer' }}
               >
@@ -153,69 +292,86 @@ const Chat = () => {
           </ul>
         </div>
 
+        {/* Chat Area */}
         <div className="col-md-9 d-flex flex-column">
+          {/* Chat Header */}
           <div className="border-bottom p-3">
+          <div className="d-flex justify-content-between align-items-center">
             <h5 className="mb-0">
               {selectedUser ? `Chat with ${selectedUser.clientname}` : 'Select a user to start chatting'}
             </h5>
-          </div>
-
-          <div className="flex-grow-1 overflow-auto p-3" style={{ backgroundColor: '#f8f9fa', maxHeight: '600px', overflowY: 'scroll' }}>
-            {selectedUser ? (
-              messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`mb-2 d-flex ${msg.sender === client.clientId ? 'justify-content-end' : 'justify-content-start'}`}
-                >
-                  <div
-                    className={`message-bubble ${msg.sender === client.clientId ? 'sent' : 'received'}`}
-                    style={{
-                      backgroundColor: msg.sender === client.clientId ? '#007bff' : '#e0e0e0',
-                      color: msg.sender === client.clientId ? 'white' : 'black',
-                      padding: '10px',
-                      borderRadius: '10px',
-                      maxWidth: '60%',
-                      textAlign: msg.sender === client.clientId ? 'right' : 'left',
-                      position: 'relative',
+            {selectedUser && (
+              <div className="d-flex align-items-center">
+                <div className="input-group" style={{ maxWidth: '400px' }}>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Search messages..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSearch();
+                      }
                     }}
-                  >
-                    <span style={{ display: 'block', marginBottom: '5px' }}>
-                      {msg.content || ''}
-                    </span>
-
-                    {msg.image && (
-                      <img
-                        src={`http://localhost:5001/${msg.image}`}
-                        alt="Sent"
-                        style={{
-                          maxWidth: '200px',
-                          maxHeight: '200px',
-                          marginTop: '5px',
-                          borderRadius: '10px',
-                          display: 'block',
-                        }}
-                      />
+                  />
+                  <div className="input-group-append">
+                    {isSearching && (
+                      <>
+                        <button 
+                          className="btn btn-outline-secondary"
+                          onClick={goToPreviousResult}
+                          disabled={currentSearchIndex <= 0}
+                        >
+                          <FontAwesomeIcon icon={faArrowUp} />
+                        </button>
+                        <button 
+                          className="btn btn-outline-secondary"
+                          onClick={goToNextResult}
+                          disabled={currentSearchIndex >= searchResults.length - 1}
+                        >
+                          <FontAwesomeIcon icon={faArrowDown} />
+                        </button>
+                        <span className="btn btn-outline-secondary disabled">
+                          {searchCount > 0 ? `${currentSearchIndex + 1}/${searchCount}` : '0/0'}
+                        </span>
+                        <button 
+                          className="btn btn-outline-secondary" 
+                          onClick={clearSearch}
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </button>
+                      </>
                     )}
-
-                    {msg.file && !msg.image && (
-                      <a
-                        href={`http://localhost:5001/${msg.file}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: msg.sender === client.clientId ? 'white' : 'black' }}
+                    {!isSearching && (
+                      <button 
+                        className="btn btn-outline-primary" 
+                        onClick={handleSearch}
                       >
-                        <FontAwesomeIcon icon={faFilePdf} size="2x" />
-                      </a>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </button>
                     )}
                   </div>
                 </div>
-              ))
+              </div>
+            )}
+          </div>
+        </div>
+
+          {/* Messages Area */}
+          <div 
+            className="flex-grow-1 overflow-auto p-3" 
+            style={{ backgroundColor: '#f8f9fa', maxHeight: '600px', overflowY: 'scroll' }}
+          >
+            {selectedUser ? (
+              (isSearching ? searchResults : messages).map((msg, index) => renderMessage(msg, index))
             ) : (
-              <p>Select a user to view messages</p>
+              <p className="text-center text-muted mt-3">Select a user to view messages</p>
             )}
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Message Input Area */}
           {selectedUser && (
             <div className="border-top p-3">
               <div className="input-group">
@@ -236,7 +392,7 @@ const Chat = () => {
                     type="file"
                     accept="image/*"
                     onChange={handleImageUpload}
-                    style={{ display: 'none' }} // Hide image file input
+                    style={{ display: 'none' }}
                     id="image-upload"
                   />
                   <label htmlFor="image-upload" className="btn btn-secondary">
@@ -247,15 +403,15 @@ const Chat = () => {
                     type="file"
                     accept="application/pdf"
                     onChange={handlePdfUpload}
-                    style={{ display: 'none' }} // Hide PDF file input
+                    style={{ display: 'none' }}
                     id="pdf-upload"
                   />
                   <label htmlFor="pdf-upload" className="btn btn-secondary">
-                    PDF
+                    <FontAwesomeIcon icon={faFilePdf} />
                   </label>
-                  
+
                   <button className="btn btn-primary" onClick={sendMessage}>
-                    Send
+                    <FontAwesomeIcon icon={faPaperPlane} />
                   </button>
                 </div>
               </div>
