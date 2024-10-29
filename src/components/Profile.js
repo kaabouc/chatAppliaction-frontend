@@ -75,28 +75,12 @@ const Profile = () => {
   }, [client]);
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    const newValue = value === '' ? null : value;
-
-    if (name.startsWith('additionalDetails')) {
-      const index = parseInt(e.target.getAttribute('data-index'), 10);
-      const field = e.target.getAttribute('data-field');
-  
-      setProfileData((prevData) => {
-        const newDetails = [...prevData.additionalDetails];
-        if (newDetails[index]) {
-          newDetails[index][field] = value;
-        } else {
-          newDetails[index] = { [field]: value };
-        }
-        return { ...prevData, additionalDetails: newDetails };
-      });
-    } else {
-      setProfileData((prevData) => ({
-        ...prevData,
-        [name]: value,
-      }));
-    }
+    setProfileData((prevData) => ({
+      ...prevData,
+      [name]: value,
+    }));
   };
+  
   
   
 
@@ -131,59 +115,67 @@ const handleRemoveDetail = (index) => {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     try {
-        const formData = new FormData();
-
-        // Append form data
-        for (const [key, value] of Object.entries(profileData)) {
-            if (key === 'additionalDetails') {
-                formData.append(key, JSON.stringify(value)); // Send additionalDetails as JSON string
-            } else if (value !== null && value !== undefined) {
-                formData.append(key, value);
-            }
+      const formData = new FormData();
+  
+      // Append the file if selected
+      if (selectedFile) {
+        formData.append('profileImage', selectedFile);
+      }
+  
+      // Append all profileData fields
+      for (const key in profileData) {
+        formData.append(key, profileData[key]);
+      }
+  
+      const response = await axiosInstance.post(
+        `${BASE_URL}/api/client/profile/${client.clientId}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
         }
-
-        // Append the file if selected
-        if (selectedFile) {
-            formData.append('profileImage', selectedFile);
-        }
-
-        // Use axiosInstance to send the form data
-        const response = await axiosInstance.post(
-            `${BASE_URL}/api/client/profile/${client.clientId}`,
-            formData,
-            {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            }
-        );
-
-        setProfileData((prevData) => ({
-            ...prevData,
-            ...response.data,
-            birthday: response.data.birthday
-                ? new Date(response.data.birthday).toISOString().split('T')[0]
-                : '',
-            additionalDetails: response.data.additionalDetails || [],
-            profileImage: response.data.profileImage,
-        }));
-        setIsModalOpen(false);
-        setSnackbar({
-            open: true,
-            message: 'Profile updated successfully!',
-            severity: 'success',
-        });
+      );
+  
+      setProfileData({
+        ...response.data,
+        birthday: response.data.birthday
+          ? new Date(response.data.birthday).toISOString().split('T')[0]
+          : '',
+      });
+      setIsModalOpen(false);
+      setSnackbar({
+        open: true,
+        message: 'Profile updated successfully!',
+        severity: 'success',
+      });
     } catch (error) {
-        console.error('Error updating profile:', error);
-        setSnackbar({
-            open: true,
-            message: 'Error updating profile.',
-            severity: 'error',
-        });
+      console.error('Error updating profile:', error);
+      setSnackbar({
+        open: true,
+        message: 'Error updating profile.',
+        severity: 'error',
+      });
     }
+  };
+  
+
+// State for new dynamic field
+const [newFieldKey, setNewFieldKey] = useState('');
+const [newFieldValue, setNewFieldValue] = useState('');
+
+// Function to add new dynamic field
+const handleAddField = () => {
+  if (newFieldKey && newFieldValue) {
+    setProfileData((prevData) => ({
+      ...prevData,
+      [newFieldKey]: newFieldValue,
+    }));
+    setNewFieldKey('');
+    setNewFieldValue('');
+  }
 };
-
-
+const excludedFields = ['__v', 'additionalDetails', '_id', 'clientId', 'profileImage'];
   return (
     <Box sx={{ p: 3 }}>
       <Paper elevation={3} sx={{ maxWidth: 600, mx: 'auto', p: 4 }}>
@@ -204,39 +196,27 @@ const handleRemoveDetail = (index) => {
           My Profile
         </Typography>
         <Grid container spacing={2}>
-          {/* National Card Code */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1">
-              National Card Code: {profileData.nationalCardCode || 'N/A'}
-            </Typography>
-          </Grid>
-          {/* Phone Number */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1">
-              Phone Number: {profileData.phoneNumber || 'N/A'}
-            </Typography>
-          </Grid>
-          {/* Birthday */}
-          <Grid item xs={12}>
-            <Typography variant="subtitle1">
-              Birthday: {profileData.birthday || 'N/A'}
-            </Typography>
-          </Grid>
-         {/* Additional Details */}
-          <Grid item xs={12}>
-            <Typography variant="h6">Additional Details</Typography>
-            {profileData.additionalDetails && profileData.additionalDetails.length > 0 ? (
-              profileData.additionalDetails.map((detail, index) => (
-                <Typography variant="body1" key={index}>
-                  <strong>{detail.name}:</strong> {detail.value}
-                </Typography>
-              ))
-            ) : (
-              <Typography variant="body1">No additional details.</Typography>
-            )}
-          </Grid>
+          {/*profile daata */}
+          <Grid container spacing={2}>
+      {/* Loop through each key-value pair in profileData, excluding unwanted fields */}
+      {Object.entries(profileData).map(([key, value]) => {
+        if (!excludedFields.includes(key)) {
+          return (
+            <Grid item xs={12} key={key}>
+              <Typography variant="subtitle1">
+                {key}: {value || 'N/A'}
+              </Typography>
+            </Grid>
+          );
+        }
+        return null; // Skip rendering for excluded fields
+      })}
+    </Grid>
 
-          {/* Action Button */}
+         
+
+          {/* Action Butto
+          n */}
           <Grid item xs={12} sx={{ textAlign: 'center' }}>
             <Button variant="contained" onClick={handleModalOpen}>
               Edit Profile
@@ -328,60 +308,26 @@ const handleRemoveDetail = (index) => {
           </Grid>
           {/* Additional Details */}
           <Grid item xs={12}>
-            <Typography variant="h6">Additional Details</Typography>
-            {profileData.additionalDetails.map((detail, index) => (
-              <Grid
-                container
-                spacing={1}
-                key={index}
-                alignItems="center"
-                sx={{ mt: 1 }}
-              >
-                <Grid item xs={5}>
-                  <TextField
-                    label="Name"
-                    name={`additionalDetails-name-${index}`}
-                    value={detail.name || ''}
-                    onChange={handleInputChange}
-                    fullWidth
-                    inputProps={{
-                      'data-index': index,
-                      'data-field': 'name',
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={5}>
-                  <TextField
-                    label="Value"
-                    name={`additionalDetails-value-${index}`}
-                    value={detail.value || ''}
-                    onChange={handleInputChange}
-                    fullWidth
-                    inputProps={{
-                      'data-index': index,
-                      'data-field': 'value',
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={2}>
-                  <IconButton
-                    onClick={() => handleRemoveDetail(index)}
-                    color="error"
-                  >
-                    <RemoveIcon />
-                  </IconButton>
-                </Grid>
-              </Grid>
-            ))}
-            <Button
-              variant="outlined"
-              onClick={handleAddDetail}
-              startIcon={<AddIcon />}
-              sx={{ mt: 2 }}
-            >
-              Add Detail
-            </Button>
-          </Grid>
+              <TextField
+                label="Field Name"
+                value={newFieldKey}
+                onChange={(e) => setNewFieldKey(e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Field Value"
+                value={newFieldValue}
+                onChange={(e) => setNewFieldValue(e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Button variant="contained" onClick={handleAddField}>
+                Add Field
+              </Button>
+            </Grid>
         </Grid>
       </Box>
     </DialogContent>
