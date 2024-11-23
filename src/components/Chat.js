@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import axios from 'axios'
 import { 
   faImage, 
   faPaperPlane,
@@ -11,6 +12,8 @@ import {
   faArrowUp, 
   faArrowDown 
 } from '@fortawesome/free-solid-svg-icons';
+import BASE_URL from '../config';
+
 const Chat = () => {
   const { client } = useAuth();
   const [users, setUsers] = useState([]);
@@ -50,7 +53,7 @@ const Chat = () => {
   // Fetch messages for selected user
   const fetchMessages = () => {
     if (selectedUser && client) {
-      fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser._id}`, {
+      fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser.id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
       })
         .then((res) => res.json())
@@ -68,7 +71,7 @@ const Chat = () => {
 
     socket.on('chat message', (msg) => {
       if (
-        (msg.sender === selectedUser?._id || msg.receiver === selectedUser?._id) &&
+        (msg.sender === selectedUser?.id || msg.receiver === selectedUser?.id) &&
         (msg.sender === client?.clientId || msg.receiver === client?.clientId)
       ) {
         setMessages((prevMessages) => [...prevMessages, msg]);
@@ -88,7 +91,7 @@ const Chat = () => {
     setIsSearching(true);
     try {
       const response = await fetch(
-        `http://localhost:5001/api/messages/search/${client.clientId}/${selectedUser._id}/${searchQuery}`,
+        `http://localhost:5001/api/messages/search/${client.clientId}/${selectedUser.id}/${searchQuery}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
         }
@@ -143,7 +146,7 @@ const Chat = () => {
    useEffect(() => {
     const fetchUsers = async () => {
         try {
-            const response = await axios.get('/api/users'); // Adjust to your users route
+            const response = await axios.get('http://localhost:5001/api/client/auth/users'); // Adjust to your users route
             setUsers(response.data);
             setFilteredUsers(response.data); // Initially set filtered users to all users
         } catch (error) {
@@ -210,7 +213,7 @@ const handleSearche = (e) => {
 
     const message = {
       sender: client.clientId,
-      receiver: selectedUser._id,
+      receiver: selectedUser.id,
       content: newMessage.trim(),
     };
 
@@ -267,7 +270,7 @@ const renderMessage = (msg, index) => {
     );
   };
 
-  return (
+    return (
     <div
       key={index}
       className={`mb-2 d-flex ${msg.sender === client?.clientId ? 'justify-content-end' : 'justify-content-start'}`}
@@ -317,162 +320,168 @@ const renderMessage = (msg, index) => {
 };
 
 
-  return (
-    <div className="container-fluid">
-      <div className="row vh-100">
-        {/* Users List */}
-        <div className="col-md-3 border-right bg-light p-3">
-            <h5 className="border-bottom pb-2">Users</h5>
-            <input
-                type="text"
-                placeholder="Search users..."
-                value={query}
-                onChange={handleSearche}
-                className="form-control mb-3" // Bootstrap class for styling
-            />
-            <ul className="list-group">
-                {filteredUsers.map((user) => (
-                    <li
-                        key={user._id}
-                        className={`list-group-item ${selectedUser?._id === user._id ? 'active' : ''}`}
-                        onClick={() => setSelectedUser(user)}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        {user.clientname}
-                    </li>
-                ))}
-            </ul>
-        </div>
+return (
+  <div className="container-fluid">
+    <div className="row vh-100">
+      {/* Users List */}
+      <div className="col-md-3 border-right bg-light p-3">
+          <h5 className="border-bottom pb-2">Users</h5>
+          <input
+              type="text"
+              placeholder="Search users..."
+              value={query}
+              onChange={handleSearche}
+              className="form-control mb-3" // Bootstrap class for styling
+          />
+          <ul className="list-group">
+          {filteredUsers.map((user) => (
+            <li
+              key={user._id}
+              className={`list-group-item d-flex align-items-center ${selectedUser && selectedUser.id === user.id ? 'active' : ''}`}
+              onClick={() => setSelectedUser(user)}
+              style={{ cursor: 'pointer' }}
+            >
+              <img
+                src={`${BASE_URL}/uploads/${user.profilePicture}` || '/profile.jpg'}
+                alt={`${user.clientname}'s profile`}
+                className="rounded-circle"
+                style={{ width: '50px', height: '50px', objectFit: 'cover', marginRight: '15px' }} // Add marginRight
+              />
+              <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{user.clientname}</span> {/* Increase font size and add bold */}
+            </li>
+          ))}
+        </ul>
+      </div>
 
-        {/* Chat Area */}
-        <div className="col-md-9 d-flex flex-column">
-          {/* Chat Header */}
-          <div className="border-bottom p-3">
-          <div className="d-flex justify-content-between align-items-center">
-            <h5 className="mb-0">
-              {selectedUser ? `Chat with ${selectedUser.clientname}` : 'Select a user to start chatting'}
-            </h5>
-            {selectedUser && (
-              <div className="d-flex align-items-center">
-                <div className="input-group" style={{ maxWidth: '400px' }}>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Search messages..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleSearch();
-                      }
-                    }}
-                  />
-                  <div className="input-group-append">
-                    {isSearching && (
-                      <>
-                        <button 
-                          className="btn btn-outline-secondary"
-                          onClick={goToPreviousResult}
-                          disabled={currentSearchIndex <= 0}
-                        >
-                          <FontAwesomeIcon icon={faArrowUp} />
-                        </button>
-                        <button 
-                          className="btn btn-outline-secondary"
-                          onClick={goToNextResult}
-                          disabled={currentSearchIndex >= searchResults.length - 1}
-                        >
-                          <FontAwesomeIcon icon={faArrowDown} />
-                        </button>
-                        <span className="btn btn-outline-secondary disabled">
-                          {searchCount > 0 ? `${currentSearchIndex + 1}/${searchCount}` : '0/0'}
-                        </span>
-                        <button 
-                          className="btn btn-outline-secondary" 
-                          onClick={clearSearch}
-                        >
-                          <FontAwesomeIcon icon={faTimes} />
-                        </button>
-                      </>
-                    )}
-                    {!isSearching && (
-                      <button 
-                        className="btn btn-outline-primary" 
-                        onClick={handleSearch}
-                      >
-                        <FontAwesomeIcon icon={faSearch} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-          {/* Messages Area */}
-          <div 
-            className="flex-grow-1 overflow-auto p-3" 
-            style={{ backgroundColor: '#f8f9fa', maxHeight: '600px', overflowY: 'scroll' }}
-          >
-            {selectedUser ? (
-              (isSearching ? searchResults : messages).map((msg, index) => renderMessage(msg, index))
-            ) : (
-              <p className="text-center text-muted mt-3">Select a user to view messages</p>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Message Input Area */}
+      {/* Chat Area */}
+      <div className="col-md-9 d-flex flex-column">
+        {/* Chat Header */}
+        <div className="border-bottom p-3">
+        <div className="d-flex justify-content-between align-items-center">
+          <h5 className="mb-0">
+            {selectedUser ? `Chat with ${selectedUser.clientname}` : 'Select a user to start chatting'}
+          </h5>
           {selectedUser && (
-            <div className="border-top p-3">
-              <div className="input-group">
+            <div className="d-flex align-items-center">
+              <div className="input-group" style={{ maxWidth: '400px' }}>
                 <input
                   type="text"
                   className="form-control"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={`Message ${selectedUser.clientname}`}
+                  placeholder="Search messages..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
-                      sendMessage();
+                      handleSearch();
                     }
                   }}
                 />
                 <div className="input-group-append">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    style={{ display: 'none' }}
-                    id="image-upload"
-                  />
-                  <label htmlFor="image-upload" className="btn btn-secondary">
-                    <FontAwesomeIcon icon={faImage} />
-                  </label>
-
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handlePdfUpload}
-                    style={{ display: 'none' }}
-                    id="pdf-upload"
-                  />
-                  <label htmlFor="pdf-upload" className="btn btn-secondary">
-                    <FontAwesomeIcon icon={faFilePdf} />
-                  </label>
-
-                  <button className="btn btn-primary" onClick={sendMessage}>
-                    <FontAwesomeIcon icon={faPaperPlane} />
-                  </button>
+                  {isSearching && (
+                    <>
+                      <button 
+                        className="btn btn-outline-secondary"
+                        onClick={goToPreviousResult}
+                        disabled={currentSearchIndex <= 0}
+                      >
+                        <FontAwesomeIcon icon={faArrowUp} />
+                      </button>
+                      <button 
+                        className="btn btn-outline-secondary"
+                        onClick={goToNextResult}
+                        disabled={currentSearchIndex >= searchResults.length - 1}
+                      >
+                        <FontAwesomeIcon icon={faArrowDown} />
+                      </button>
+                      <span className="btn btn-outline-secondary disabled">
+                        {searchCount > 0 ? `${currentSearchIndex + 1}/${searchCount}` : '0/0'}
+                      </span>
+                      <button 
+                        className="btn btn-outline-secondary" 
+                        onClick={clearSearch}
+                      >
+                        <FontAwesomeIcon icon={faTimes} />
+                      </button>
+                    </>
+                  )}
+                  {!isSearching && (
+                    <button 
+                      className="btn btn-outline-primary" 
+                      onClick={handleSearch}
+                    >
+                      <FontAwesomeIcon icon={faSearch} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+        {/* Messages Area */}
+        <div 
+          className="flex-grow-1 overflow-auto p-3" 
+          style={{ backgroundColor: '#f8f9fa', maxHeight: '600px', overflowY: 'scroll' }}
+        >
+          {selectedUser ? (
+            (isSearching ? searchResults : messages).map((msg, index) => renderMessage(msg, index))
+          ) : (
+            <p className="text-center text-muted mt-3">Select a user to view messages</p>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Message Input Area */}
+        {selectedUser && (
+          <div className="border-top p-3">
+            <div className="input-group">
+              <input
+                type="text"
+                className="form-control"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder={`Message ${selectedUser.clientname}`}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    sendMessage();
+                  }
+                }}
+              />
+              <div className="input-group-append">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                  id="image-upload"
+                />
+                <label htmlFor="image-upload" className="btn btn-secondary">
+                  <FontAwesomeIcon icon={faImage} />
+                </label>
+
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handlePdfUpload}
+                  style={{ display: 'none' }}
+                  id="pdf-upload"
+                />
+                <label htmlFor="pdf-upload" className="btn btn-secondary">
+                  <FontAwesomeIcon icon={faFilePdf} />
+                </label>
+
+                <button className="btn btn-primary" onClick={sendMessage}>
+                  <FontAwesomeIcon icon={faPaperPlane} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  );
+  </div>
+);
 };
 
 export default Chat;
