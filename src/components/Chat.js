@@ -14,7 +14,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import BASE_URL from '../config';
 
-import BASE_URL from '../config';
+// import BASE_URL from '../config';
 
 const Chat = () => {
   const { client } = useAuth();
