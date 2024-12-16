@@ -14,8 +14,6 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import BASE_URL from '../config';
 
-// import BASE_URL from '../config';
-
 const Chat = () => {
   const { client } = useAuth();
   const [users, setUsers] = useState([]);
@@ -53,19 +51,19 @@ const Chat = () => {
   }, [client]);
 
   // Fetch messages for selected user
-  const fetchMessages = () => {
-    if (selectedUser && client) {
-      fetch(`http://localhost:5001/api/messages/${client.clientId}/${selectedUser.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
+  // Fetch messages for selected user
+const fetchMessages = () => {
+  if (selectedUser && client) {
+    const receiverId = selectedUser.clientId; // Assuming clientId is the correct property
+    fetch(`http://localhost:5001/api/messages/${client.clientId}/${receiverId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setMessages(data);
+        scrollToBottom();
       })
-        .then((res) => res.json())
-        .then((data) => {
-          setMessages(data);
-          scrollToBottom();
-        })
-        .catch((err) => console.error('Error fetching messages:', err));
-    }
-  };
+      .catch((err) => console.error('Error fetching messages:', err));
+  }
+};
 
   // Handle real-time messages and fetch initial messages
   useEffect(() => {
@@ -93,10 +91,10 @@ const Chat = () => {
     setIsSearching(true);
     try {
       const response = await fetch(
-        `http://localhost:5001/api/messages/search/${client.clientId}/${selectedUser.id}/${searchQuery}`,
-        {
-          headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
-        }
+        `http://localhost:5001/api/messages/search/${client.clientId}/${selectedUser.clientId}/${searchQuery}`,
+        // {
+        //   headers: { Authorization: `Bearer ${localStorage.getItem('jwt_token')}` },
+        // }
       );
 
       const data = await response.json();
@@ -207,41 +205,42 @@ const handleSearche = (e) => {
       alert('Please select a user to chat with.');
       return;
     }
-
+  
     if (!newMessage.trim() && !imageFile && !pdfFile) {
       alert('Please enter a message or select a file.');
       return;
     }
-
-    const message = {
+  
+    // Ensure correct assignment of clientId
+    const messageData = {
       sender: client.clientId,
-      receiver: selectedUser.id,
+      receiver: selectedUser.clientId, // Ensure this property exists and is correct
       content: newMessage.trim(),
     };
-
+  
     const formData = new FormData();
-    formData.append('message', JSON.stringify(message));
+    formData.append('message', JSON.stringify(messageData));
     
     if (imageFile) {
       formData.append('file', imageFile);
     } else if (pdfFile) {
       formData.append('file', pdfFile);
     }
-
+  
     try {
       const response = await fetch('http://localhost:5001/api/messages/send', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
-        },
+        // headers: {
+        //   Authorization: `Bearer ${localStorage.getItem('jwt_token')}`,
+        // },
         body: formData,
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to send message');
       }
-
+  
       const data = await response.json();
       socket.emit('chat message', data);
       fetchMessages();
@@ -253,6 +252,26 @@ const handleSearche = (e) => {
       alert('Error sending message: ' + error.message);
     }
   };
+  
+  
+  // Handle real-time messages and fetch initial messages
+  useEffect(() => {
+    fetchMessages();
+  
+    socket.on('chat message', (msg) => {
+      if (
+        (msg.sender === selectedUser?.clientId || msg.receiver === selectedUser?.clientId) &&
+        (msg.sender === client?.clientId || msg.receiver === client?.clientId)
+      ) {
+        setMessages((prevMessages) => [...prevMessages, msg]);
+        scrollToBottom();
+      }
+    });
+  
+    return () => {
+      socket.off('chat message');
+    };
+  }, [selectedUser, client, socket]);
 
  // Update the renderMessage function to highlight searched words
 const renderMessage = (msg, index) => {
@@ -338,17 +357,23 @@ return (
           <ul className="list-group">
           {filteredUsers.map((user) => (
             <li
-              key={user._id}
-              className={`list-group-item d-flex align-items-center ${selectedUser && selectedUser.id === user.id ? 'active' : ''}`}
+              key={user.clientId}
+              className={`list-group-item d-flex align-items-center ${selectedUser && selectedUser.clientId === user.clientId ? 'active' : ''}`}
               onClick={() => setSelectedUser(user)}
               style={{ cursor: 'pointer' }}
             >
-              <img
-                src={`${BASE_URL}/uploads/${user.profilePicture}` || '/profile.jpg'}
+               <img
+                src={ '/profile.jpg'}
                 alt={`${user.clientname}'s profile`}
                 className="rounded-circle"
                 style={{ width: '50px', height: '50px', objectFit: 'cover', marginRight: '15px' }} // Add marginRight
               />
+              {/* <img
+                src={`${BASE_URL}/uploads/${user.profilePicture}` || '/profile.jpg'}
+                alt={`${user.clientname}'s profile`}
+                className="rounded-circle"
+                style={{ width: '50px', height: '50px', objectFit: 'cover', marginRight: '15px' }} // Add marginRight
+              /> */}
               <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{user.clientname}</span> {/* Increase font size and add bold */}
             </li>
           ))}
@@ -461,7 +486,6 @@ return (
                 <label htmlFor="image-upload" className="btn btn-secondary">
                   <FontAwesomeIcon icon={faImage} />
                 </label>
-
                 <input
                   type="file"
                   accept="application/pdf"
